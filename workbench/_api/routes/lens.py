@@ -626,12 +626,13 @@ def collect_logit_lens_v2(
         return tracer.backend.job_id
 
     # For local execution, return the resolved values
+    # Note: entropy was computed as t.stack(all_entropy) and saved inside the trace
     return {
         "topk": topk,
         "tracked": tracked,
         "probs": probs,
         "ranks": ranks if include_rank else None,
-        "entropy": t.stack(all_entropy) if include_entropy else None,
+        "entropy": entropy if include_entropy else None,
     }
 
 

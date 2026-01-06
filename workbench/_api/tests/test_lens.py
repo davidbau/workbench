@@ -3,18 +3,14 @@ Tests for the lens endpoints using local GPT-2.
 
 These tests run with REMOTE=false, using a local GPT-2 model for fast execution.
 GPT-2 (124M params) runs well on CPU and fits comfortably in memory.
-
-Note: The V2 endpoint with include_entropy=True has a known bug in local mode
-where it tries to access `all_entropy` outside the trace context. Tests for
-entropy functionality are skipped until this is fixed.
 """
 
 import pytest
 
 
 @pytest.mark.asyncio
-async def test_lens_v2_basic(client, test_headers, gpt2_model):
-    """Test the V2 lens endpoint returns valid data (without entropy due to bug)."""
+async def test_lens_v2_full(client, test_headers, gpt2_model):
+    """Test the V2 lens endpoint returns valid data with all features enabled."""
     response = await client.post(
         "/lens/start-v2",
         json={
@@ -22,7 +18,7 @@ async def test_lens_v2_basic(client, test_headers, gpt2_model):
             "prompt": "The quick brown fox",
             "k": 5,
             "include_rank": True,
-            "include_entropy": False,  # Disabled due to local mode bug
+            "include_entropy": True,
         },
         headers=test_headers,
     )
@@ -67,6 +63,16 @@ async def test_lens_v2_basic(client, test_headers, gpt2_model):
         # Ranks should be positive integers
         for r in trajectory["rank"]:
             assert r >= 1
+
+    # Check entropy data is present
+    assert "entropy" in data
+    assert data["entropy"] is not None
+    assert len(data["entropy"]) == 12  # One per layer
+    assert len(data["entropy"][0]) == len(data["input"])  # One per position
+    # Entropy values should be non-negative
+    for layer_entropy in data["entropy"]:
+        for e in layer_entropy:
+            assert e >= 0
 
 
 @pytest.mark.asyncio
