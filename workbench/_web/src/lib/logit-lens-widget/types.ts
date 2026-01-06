@@ -259,6 +259,8 @@ export interface WidgetEventHandlers {
   onGroupPinChange?: (pinnedGroups: PinnedGroup[]) => void;
   /** Called when the title is changed by the user */
   onTitleChange?: (title: string) => void;
+  /** Called when a row is hovered in the widget (pos is null when hover ends) */
+  onRowHover?: (pos: number | null) => void;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -304,6 +306,10 @@ export interface LogitLensWidgetInterface {
   getShowHeatmap(): boolean;
   setShowChart(show: boolean): void;
   getShowChart(): boolean;
+  // Hover API for external synchronization
+  hoverRow(pos: number): void;
+  clearHover(): void;
+  getHoveredRow(): number;
 }
 
 // ═══════════════════════════════════════════════════════════════

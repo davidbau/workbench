@@ -26,7 +26,7 @@ export function ChartDisplay() {
     const { jobStatus } = useWorkspace();
     const { chartId, workspaceId } = useParams<{ chartId: string; workspaceId: string }>();
     const { captureRef } = useCapture();
-    const { setWidgetRef, setPinnedRows, setPinnedGroups, setTrackedTokens } = useLensWorkspace();
+    const { setWidgetRef, setPinnedRows, setPinnedGroups, setTrackedTokens, setHoveredRow } = useLensWorkspace();
     const queryClient = useQueryClient();
     const updateChartName = useUpdateChartName();
     const containerRef = useRef<HTMLDivElement>(null);
@@ -83,6 +83,11 @@ export function ChartDisplay() {
             updateChartName.mutate({ chartId, name: newTitle });
         }
     }, [chartId, updateChartName]);
+
+    // Handle row hover from widget - syncs with TokenArea
+    const handleRowHover = useCallback((pos: number | null) => {
+        setHoveredRow(pos);
+    }, [setHoveredRow]);
 
     const { data: chart, isLoading } = useQuery({
         queryKey: queryKeys.charts.chart(chartId),
@@ -158,6 +163,7 @@ export function ChartDisplay() {
                         onRowPinChange={handleRowPinChange}
                         onGroupPinChange={handleGroupPinChange}
                         onTitleChange={handleTitleChange}
+                        onRowHover={handleRowHover}
                     />
                 </div>
             ) : isHeatmapRunning || (!isPending && chart.type === "heatmap") ? (

@@ -32,6 +32,12 @@ interface LensWorkspaceState {
     trajectoryMetric: "prob" | "rank";
     setTrajectoryMetric: (metric: "prob" | "rank") => void;
     hasRankData: () => boolean;
+
+    // Hover state for synchronization with TokenArea
+    hoveredRow: number | null;
+    setHoveredRow: (pos: number | null) => void;
+    hoverRow: (pos: number) => void;
+    clearHover: () => void;
 }
 
 export const useLensWorkspace = create<LensWorkspaceState>()((set, get) => ({
@@ -108,5 +114,23 @@ export const useLensWorkspace = create<LensWorkspaceState>()((set, get) => ({
             return widgetRef.hasRankData();
         }
         return false;
+    },
+
+    // Hover state for synchronization with TokenArea
+    hoveredRow: null,
+    setHoveredRow: (pos) => set({ hoveredRow: pos }),
+    hoverRow: (pos) => {
+        const { widgetRef } = get();
+        if (widgetRef) {
+            widgetRef.hoverRow(pos);
+        }
+        set({ hoveredRow: pos });
+    },
+    clearHover: () => {
+        const { widgetRef } = get();
+        if (widgetRef) {
+            widgetRef.clearHover();
+        }
+        set({ hoveredRow: null });
     },
 }));

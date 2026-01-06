@@ -39,6 +39,8 @@ export function generateStyles(uid: string): string {
     #${uid} .input-token:hover { background: #e8e8e8; }
     #${uid} tr:has(.input-token:hover) { outline: 2px solid rgba(255, 193, 7, 0.8); outline-offset: -1px; }
     #${uid} tr:has(.input-token:hover) .input-token { background: #fff59d !important; }
+    #${uid} tr.external-hover { outline: 2px solid rgba(33, 150, 243, 0.6); outline-offset: -1px; }
+    #${uid} tr.external-hover .input-token { background: #e3f2fd !important; }
     #${uid} .layer-hdr {
       padding: 4px 2px; text-align: center; font-weight: 500; color: #666;
       background: #f5f5f5; font-size: calc(var(--ll-content-size, 14px) * 0.9); position: relative;
@@ -122,6 +124,8 @@ export function generateStyles(uid: string): string {
     #${uid}.dark-mode .input-token { background: #2d2d2d; color: #e0e0e0; }
     #${uid}.dark-mode .input-token:hover { background: #3d3d3d; }
     #${uid}.dark-mode tr:has(.input-token:hover) .input-token { background: #4a4a00 !important; color: #fff !important; }
+    #${uid}.dark-mode tr.external-hover { outline: 2px solid rgba(33, 150, 243, 0.6); outline-offset: -1px; }
+    #${uid}.dark-mode tr.external-hover .input-token { background: #1a3a5c !important; color: #e0e0e0 !important; }
     #${uid}.dark-mode .layer-hdr { background: #2d2d2d; color: #aaa; }
     #${uid}.dark-mode .corner-hdr { background: #1e1e1e; color: #aaa; }
     #${uid}.dark-mode .chart-container { background: #252525; }

@@ -21,6 +21,7 @@ const TOKEN_STYLES = {
     filled: "bg-primary/70 ring-1 ring-primary/30 ring-inset",
     hover: "hover:bg-primary/20 hover:ring-1 hover:ring-primary/30 hover:ring-inset",
     pinned: "bg-amber-300/50 ring-1 ring-amber-400/50 ring-inset dark:bg-amber-600/30 dark:ring-amber-500/30",
+    externalHover: "bg-blue-200/60 ring-1 ring-blue-400/50 ring-inset dark:bg-blue-600/30 dark:ring-blue-500/30",
 } as const;
 
 const fix = (text: string) => {
@@ -45,7 +46,7 @@ export function TokenArea({
     loading,
     showFill,
 }: TokenAreaProps) {
-    const { pinnedRows } = useLensWorkspace();
+    const { pinnedRows, hoveredRow, hoverRow, clearHover } = useLensWorkspace();
 
     // Create a set of pinned positions for fast lookup
     const pinnedPositions = new Set(pinnedRows.map((row) => row.pos));
@@ -53,9 +54,13 @@ export function TokenArea({
     const getTokenStyle = (token: Token, idx: number) => {
         const isFilled = config.token.targetIds.length > 0;
         const isPinned = pinnedPositions.has(idx);
+        const isExternalHovered = hoveredRow === idx;
 
         let backgroundStyle = "";
-        if (isPinned) {
+        if (isExternalHovered) {
+            // Token is being hovered from the widget - show external hover style
+            backgroundStyle = TOKEN_STYLES.externalHover;
+        } else if (isPinned) {
             // Token is pinned in widget - show pinned style
             backgroundStyle = TOKEN_STYLES.pinned;
         } else if (config.token.idx === idx && showFill) {
@@ -87,6 +92,16 @@ export function TokenArea({
                             className={styles}
                             onClick={(event: React.MouseEvent<HTMLDivElement>) => {
                                 handleTokenClick(event, idx);
+                            }}
+                            onMouseEnter={() => {
+                                if (!loading) {
+                                    hoverRow(idx);
+                                }
+                            }}
+                            onMouseLeave={() => {
+                                if (!loading) {
+                                    clearHover();
+                                }
                             }}
                         >
                             {result}

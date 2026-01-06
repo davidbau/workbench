@@ -52,6 +52,7 @@ export interface LogitLensWidgetInterface {
         onRowPinChange?: (pinnedRows: SerializedPinnedRow[]) => void;
         onGroupPinChange?: (pinnedGroups: PinnedGroup[]) => void;
         onTitleChange?: (title: string) => void;
+        onRowHover?: (pos: number | null) => void;
     }) => void;
     // Title management
     setTitle: (title: string) => void;
@@ -65,6 +66,10 @@ export interface LogitLensWidgetInterface {
     setTrajectoryMetric: (metric: "prob" | "rank") => void;
     getTrajectoryMetric: () => "prob" | "rank";
     hasRankData: () => boolean;
+    // Hover API for external synchronization
+    hoverRow: (pos: number) => void;
+    clearHover: () => void;
+    getHoveredRow: () => number;
 }
 
 // Declare the global LogitLensWidget function
@@ -92,6 +97,8 @@ interface LogitLensWidgetEmbedProps {
     onGroupPinChange?: (pinnedGroups: PinnedGroup[]) => void;
     /** Called when the title is changed by the user */
     onTitleChange?: (title: string) => void;
+    /** Called when a row is hovered in the widget (pos is null when hover ends) */
+    onRowHover?: (pos: number | null) => void;
     /** External ref to access the widget instance */
     widgetRef?: React.MutableRefObject<LogitLensWidgetInterface | null>;
 }
@@ -106,6 +113,7 @@ export function LogitLensWidgetEmbed({
     onRowPinChange,
     onGroupPinChange,
     onTitleChange,
+    onRowHover,
     widgetRef: externalWidgetRef,
 }: LogitLensWidgetEmbedProps) {
     const containerRef = useRef<HTMLDivElement>(null);
@@ -192,6 +200,7 @@ export function LogitLensWidgetEmbed({
                     onRowPinChange,
                     onGroupPinChange,
                     onTitleChange,
+                    onRowHover,
                 });
 
                 // Detect dark mode from CSS
@@ -235,9 +244,10 @@ export function LogitLensWidgetEmbed({
                 onRowPinChange,
                 onGroupPinChange,
                 onTitleChange,
+                onRowHover,
             });
         }
-    }, [onRowPinChange, onGroupPinChange, onTitleChange, widgetRef]);
+    }, [onRowPinChange, onGroupPinChange, onTitleChange, onRowHover, widgetRef]);
 
     // Update dark mode when theme changes
     useEffect(() => {

@@ -202,6 +202,13 @@ export function LogitLensWidget(
     }
   }
 
+  // Fire row hover event
+  function fireRowHover(pos: number | null): void {
+    if (eventHandlers.onRowHover) {
+      eventHandlers.onRowHover(pos);
+    }
+  }
+
   // Restore pinned rows from uiState
   if (uiState?.pinnedRows) {
     state.pinnedRows = uiState.pinnedRows.map((pr) => {
@@ -1274,6 +1281,7 @@ export function LogitLensWidget(
 
       cell.addEventListener("mouseenter", () => {
         state.currentHoverPos = pos;
+        fireRowHover(pos);
         const chartInnerWidth = updateChartDimensions();
 
         if (isInputToken) {
@@ -1292,6 +1300,7 @@ export function LogitLensWidget(
       });
 
       cell.addEventListener("mouseleave", () => {
+        fireRowHover(null);
         const chartInnerWidth = updateChartDimensions();
         drawAllTrajectoriesWrapper(null, null, null, chartInnerWidth, state.currentHoverPos);
       });
@@ -1871,6 +1880,45 @@ export function LogitLensWidget(
     },
     getShowChart(): boolean {
       return state.showChart;
+    },
+    // Hover API for external synchronization
+    hoverRow(pos: number): void {
+      if (pos < 0 || pos >= nPositions) return;
+      state.currentHoverPos = pos;
+      const chartInnerWidth = updateChartDimensions();
+      const bestToken = findHighestProbToken(pos, 2, 0.05);
+      if (bestToken && findGroupForToken(bestToken) < 0) {
+        const traj = getTrajectoryForToken(bestToken, pos);
+        drawAllTrajectoriesWrapper(traj, "#999", bestToken, chartInnerWidth, pos);
+      } else {
+        drawAllTrajectoriesWrapper(null, null, null, chartInnerWidth, pos);
+      }
+      // Add visual highlight to the row in the table
+      const table = dom.table();
+      if (table) {
+        table.querySelectorAll("tr").forEach((row) => {
+          row.classList.remove("external-hover");
+        });
+        const row = table.querySelector(`tr:has(.input-token[data-pos="${pos}"])`);
+        if (row) {
+          row.classList.add("external-hover");
+        }
+      }
+    },
+    clearHover(): void {
+      state.currentHoverPos = nPositions - 1;
+      const chartInnerWidth = updateChartDimensions();
+      drawAllTrajectoriesWrapper(null, null, null, chartInnerWidth, state.currentHoverPos);
+      // Remove visual highlight
+      const table = dom.table();
+      if (table) {
+        table.querySelectorAll("tr.external-hover").forEach((row) => {
+          row.classList.remove("external-hover");
+        });
+      }
+    },
+    getHoveredRow(): number {
+      return state.currentHoverPos;
     },
   };
 
