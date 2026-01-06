@@ -492,18 +492,18 @@ async def collect_grid(
         probs, pred_ids = get_remote_heatmap(user_email, job_id, state)
     except Exception as e:
         TelemetryClient.log_request(
-            RequestStatus.ERROR, 
-            user_email, 
-            job_id=job_id, 
+            RequestStatus.ERROR,
+            user_email,
+            job_id=job_id,
             method="LENS",
             type="GRID",
             metric=lens_request.stat.value,
             msg=str(e)
         )
         raise e
-    
+
     TelemetryClient.log_request(
-        RequestStatus.COMPLETE, 
+        RequestStatus.COMPLETE,
         user_email,
         job_id=job_id,
         method="LENS",
@@ -511,3 +511,227 @@ async def collect_grid(
         metric=lens_request.stat.value
     )
     return {"data": process_grid_results(probs, pred_ids, lens_request, state)}
+
+
+############ V2 FORMAT (LogitLensKit compatible) ############
+
+class LogitLensV2Request(BaseModel):
+    model: str
+    prompt: str
+    k: int = 5  # Top-k predictions to track
+
+
+class LogitLensV2Meta(BaseModel):
+    version: int = 2
+    model: str
+
+
+class LogitLensV2Response(NDIFResponse):
+    meta: LogitLensV2Meta | None = None
+    input: list[str] | None = None
+    layers: list[int] | None = None
+    topk: list[list[list[str]]] | None = None  # [layer][position][k]
+    tracked: list[dict[str, list[float]]] | None = None  # [position]{token: trajectory}
+
+
+def collect_logit_lens_v2(
+    req: LogitLensV2Request, state: AppState
+) -> dict:
+    """
+    Collect logit lens data in V2 format (LogitLensKit compatible).
+
+    Returns top-k predictions and probability trajectories for all tracked tokens,
+    optimized for bandwidth (server-side reduction).
+    """
+    model = state[req.model]
+    tok = model.tokenizer
+    k = req.k
+
+    with model.trace(
+        req.prompt,
+        remote=state.remote,
+        backend=state.make_backend(model=model),
+    ) as tracer:
+        all_probs = []
+        all_topk = []
+
+        for layer in model.model.layers:
+            # Get hidden state
+            hs = layer.output
+            if isinstance(hs, tuple):
+                hs = hs[0]
+
+            # Project to vocabulary: hidden -> norm -> lm_head
+            logits = model.lm_head(model.model.ln_f(hs))
+            probs = t.nn.functional.softmax(logits[0], dim=-1)
+
+            all_probs.append(probs)
+            all_topk.append(probs.topk(k, dim=-1).indices)
+
+        # Stack top-k indices: [n_layers, n_pos, k]
+        topk = t.stack(all_topk).to(t.int32)
+        n_layers = len(all_probs)
+        n_pos = all_probs[0].shape[0]
+
+        # For each position: find unique tokens across all layers, extract trajectories
+        tracked = []
+        probs_out = []
+        for pos in range(n_pos):
+            # Union of all tokens appearing in top-k at any layer
+            unique = t.unique(topk[:, pos, :].flatten()).to(t.int32)
+            # Extract probability trajectory for each unique token
+            traj = t.stack([all_probs[li][pos, unique] for li in range(n_layers)])
+            tracked.append(unique)
+            probs_out.append(traj)
+
+        result = {"topk": topk, "tracked": tracked, "probs": probs_out}.save()
+
+    if state.remote:
+        return tracer.backend.job_id
+
+    return result
+
+
+def process_v2_results(
+    result: dict,
+    req: LogitLensV2Request,
+    state: AppState,
+) -> dict:
+    """Process V2 results into frontend-ready format."""
+    model = state[req.model]
+    tok = model.tokenizer
+
+    topk_tensor = result["topk"]
+    tracked_list = result["tracked"]
+    probs_list = result["probs"]
+
+    n_layers = topk_tensor.shape[0]
+    n_pos = topk_tensor.shape[1]
+
+    # Build vocabulary map
+    all_ids = set(topk_tensor.flatten().tolist())
+    for t_ids in tracked_list:
+        all_ids.update(t_ids.tolist())
+    vocab = {i: tok.decode([i]) for i in all_ids}
+
+    # Convert topk to string format: [layer][position][k]
+    topk_str = [
+        [[vocab[idx.item()] for idx in topk_tensor[li, pos]]
+         for pos in range(n_pos)]
+        for li in range(n_layers)
+    ]
+
+    # Convert tracked/probs to dict format: [position]{token: trajectory}
+    tracked_dict = [
+        {
+            vocab[idx.item()]: [round(p, 5) for p in probs_list[pos][:, i].tolist()]
+            for i, idx in enumerate(tracked_list[pos])
+        }
+        for pos in range(n_pos)
+    ]
+
+    # Get input tokens
+    input_tokens = [tok.decode([t]) for t in tok.encode(req.prompt)]
+
+    return {
+        "meta": {"version": 2, "model": req.model},
+        "input": input_tokens,
+        "layers": list(range(n_layers)),
+        "topk": topk_str,
+        "tracked": tracked_dict,
+    }
+
+
+@router.post("/start-v2", response_model=LogitLensV2Response)
+async def start_v2(
+    req: LogitLensV2Request,
+    state: AppState = Depends(get_state),
+    user_email: str = Depends(require_user_email)
+):
+    """Start V2 format logit lens collection (LogitLensKit compatible)."""
+
+    if state.remote:
+        if not user_has_model_access(user_email, req.model, state):
+            message = f"User does not have access to {req.model}"
+            TelemetryClient.log_request(
+                RequestStatus.ERROR,
+                user_email,
+                method="LENS",
+                type="V2",
+                msg=message,
+            )
+            raise HTTPException(status_code=403, detail=message)
+
+    TelemetryClient.log_request(
+        RequestStatus.STARTED,
+        user_email,
+        method="LENS",
+        type="V2",
+    )
+
+    try:
+        result = collect_logit_lens_v2(req, state)
+    except Exception as e:
+        TelemetryClient.log_request(
+            RequestStatus.ERROR,
+            user_email,
+            method="LENS",
+            type="V2",
+            msg=str(e),
+        )
+        raise e
+
+    if state.remote:
+        TelemetryClient.log_request(
+            RequestStatus.READY,
+            user_email,
+            method="LENS",
+            type="V2",
+            job_id=result,
+        )
+        return {"job_id": result}
+
+    processed = process_v2_results(result, req, state)
+    return processed
+
+
+@router.post("/results-v2/{job_id}", response_model=LogitLensV2Response)
+async def collect_v2(
+    job_id: str,
+    req: LogitLensV2Request,
+    state: AppState = Depends(get_state),
+    user_email: str = Depends(require_user_email)
+):
+    """Collect V2 format results for remote job."""
+    backend = state.make_backend(job_id=job_id)
+
+    try:
+        with TelemetryClient.log_latency(
+            user_email=user_email,
+            job_id=job_id,
+            method="LENS",
+            type="V2",
+            stage=Stage.DOWNLOAD
+        ):
+            results = backend()
+    except Exception as e:
+        TelemetryClient.log_request(
+            RequestStatus.ERROR,
+            user_email,
+            job_id=job_id,
+            method="LENS",
+            type="V2",
+            msg=str(e)
+        )
+        raise e
+
+    TelemetryClient.log_request(
+        RequestStatus.COMPLETE,
+        user_email,
+        job_id=job_id,
+        method="LENS",
+        type="V2",
+    )
+
+    processed = process_v2_results(results, req, state)
+    return processed

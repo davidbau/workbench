@@ -23,11 +23,14 @@ const getLensLine = async (lensRequest: { completion: LensConfigData; chartId: s
     const headers = await createUserHeadersAction();
 
     // Transform LensConfigData to LensLineRequest format
+    // Include rank and entropy by default for the workbench UI
     const lineRequest = {
         model: lensRequest.completion.model,
         stat: lensRequest.completion.statisticType,
         prompt: lensRequest.completion.prompt,
         token: lensRequest.completion.token,
+        include_rank: true,
+        include_entropy: true,
     };
 
     return await startAndPoll<Line[]>(
@@ -111,10 +114,13 @@ const getLensGrid = async (lensRequest: { completion: LensConfigData; chartId: s
     const headers = await createUserHeadersAction();
 
     // Transform LensConfigData to GridLensRequest format
+    // Include rank and entropy by default for the workbench UI
     const gridRequest = {
         model: lensRequest.completion.model,
         stat: lensRequest.completion.statisticType,
         prompt: lensRequest.completion.prompt,
+        include_rank: true,
+        include_entropy: true,
     };
 
     return await startAndPoll<HeatmapRow[]>(
