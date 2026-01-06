@@ -1117,8 +1117,11 @@ export function LogitLensWidget(
 
     const rect = cell.getBoundingClientRect();
     const containerRect = dom.widget()!.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const gap = 5;
 
-    popup.style.left = `${rect.left - containerRect.left + rect.width + 5}px`;
+    // Default: position to the right of the cell
+    popup.style.left = `${rect.left - containerRect.left + rect.width + gap}px`;
     popup.style.top = `${rect.top - containerRect.top}px`;
 
     const popupLayer = dom.popupLayer();
@@ -1183,6 +1186,14 @@ export function LogitLensWidget(
     });
 
     popup.classList.add("visible");
+
+    // After popup is visible, check if it clips the right edge and reposition if needed
+    const popupRect = popup.getBoundingClientRect();
+    if (popupRect.right > viewportWidth && rect.left - gap - popupRect.width >= 0) {
+      // Reposition to the left of the cell
+      popup.style.left = `${rect.left - containerRect.left - popupRect.width - gap}px`;
+    }
+
     showOverlay(closePopup);
     const chartInnerWidth = updateChartDimensions();
     drawAllTrajectoriesWrapper(cellData.trajectory, "#999", cellData.token, chartInnerWidth, pos);

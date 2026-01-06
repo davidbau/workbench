@@ -1922,7 +1922,9 @@ var LogitLensWidgetModule = (() => {
       if (!popup) return;
       const rect = cell.getBoundingClientRect();
       const containerRect = dom.widget().getBoundingClientRect();
-      popup.style.left = `${rect.left - containerRect.left + rect.width + 5}px`;
+      const viewportWidth = window.innerWidth;
+      const gap = 5;
+      popup.style.left = `${rect.left - containerRect.left + rect.width + gap}px`;
       popup.style.top = `${rect.top - containerRect.top}px`;
       const popupLayer = dom.popupLayer();
       const popupPos = dom.popupPos();
@@ -1978,6 +1980,10 @@ var LogitLensWidgetModule = (() => {
         });
       });
       popup.classList.add("visible");
+      const popupRect = popup.getBoundingClientRect();
+      if (popupRect.right > viewportWidth && rect.left - gap - popupRect.width >= 0) {
+        popup.style.left = `${rect.left - containerRect.left - popupRect.width - gap}px`;
+      }
       showOverlay(closePopup);
       const chartInnerWidth = updateChartDimensions();
       drawAllTrajectoriesWrapper(cellData.trajectory, "#999", cellData.token, chartInnerWidth, pos);
