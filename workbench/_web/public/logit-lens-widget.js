@@ -1471,25 +1471,23 @@ var LogitLensWidgetModule = (() => {
         visiblePositions = data.tokens.map((_, i) => i);
       } else {
         const pinnedPositions = new Set(state.pinnedRows.map((pr) => pr.pos));
-        const startPos = totalTokens - maxRows;
-        const extraPinnedPositions = [];
+        const selectedPositions = /* @__PURE__ */ new Set();
         for (const pos of pinnedPositions) {
-          if (pos < startPos) {
-            extraPinnedPositions.push(pos);
+          if (pos >= 0 && pos < totalTokens) {
+            selectedPositions.add(pos);
           }
         }
-        extraPinnedPositions.sort((a, b) => a - b);
-        const pinnedInRange = Array.from(pinnedPositions).filter((pos) => pos >= startPos).length;
-        const pinnedOutOfRange = extraPinnedPositions.length;
-        const availableForNonPinned = maxRows - pinnedInRange - pinnedOutOfRange;
-        visiblePositions = [...extraPinnedPositions];
-        const adjustedStartPos = Math.max(startPos, totalTokens - availableForNonPinned - pinnedInRange);
-        for (let i = adjustedStartPos; i < totalTokens; i++) {
-          if (!extraPinnedPositions.includes(i)) {
-            visiblePositions.push(i);
+        const remainingSlots = maxRows - selectedPositions.size;
+        if (remainingSlots > 0) {
+          let addedCount = 0;
+          for (let pos = totalTokens - 1; pos >= 0 && addedCount < remainingSlots; pos--) {
+            if (!pinnedPositions.has(pos)) {
+              selectedPositions.add(pos);
+              addedCount++;
+            }
           }
         }
-        visiblePositions.sort((a, b) => a - b);
+        visiblePositions = Array.from(selectedPositions).sort((a, b) => a - b);
       }
       let html = "<colgroup>";
       html += `<col style="width:${state.inputTokenWidth}px;">`;

@@ -517,37 +517,34 @@ export function LogitLensWidget(
     if (maxRows === null || maxRows >= totalTokens) {
       visiblePositions = data.tokens.map((_, i) => i);
     } else {
-      // Get pinned row positions
+      // Two-pass algorithm to select visible rows:
+      // Pass 1: All pinned rows must be visible
+      // Pass 2: Fill remaining slots with unpinned rows from bottom to top
+
       const pinnedPositions = new Set(state.pinnedRows.map((pr) => pr.pos));
+      const selectedPositions = new Set<number>();
 
-      // Start with pinned positions that would be hidden (before the normal cutoff)
-      const startPos = totalTokens - maxRows;
-      const extraPinnedPositions: number[] = [];
+      // Pass 1: Select all pinned positions (they always get a slot)
       for (const pos of pinnedPositions) {
-        if (pos < startPos) {
-          extraPinnedPositions.push(pos);
-        }
-      }
-      extraPinnedPositions.sort((a, b) => a - b);
-
-      // Calculate how many non-pinned rows we can show
-      const pinnedInRange = Array.from(pinnedPositions).filter((pos) => pos >= startPos).length;
-      const pinnedOutOfRange = extraPinnedPositions.length;
-      const availableForNonPinned = maxRows - pinnedInRange - pinnedOutOfRange;
-
-      // Build visible positions: start with extra pinned rows, then recent rows
-      visiblePositions = [...extraPinnedPositions];
-
-      // Add recent rows, skipping pinned ones we already added if needed
-      const adjustedStartPos = Math.max(startPos, totalTokens - availableForNonPinned - pinnedInRange);
-      for (let i = adjustedStartPos; i < totalTokens; i++) {
-        if (!extraPinnedPositions.includes(i)) {
-          visiblePositions.push(i);
+        if (pos >= 0 && pos < totalTokens) {
+          selectedPositions.add(pos);
         }
       }
 
-      // Sort to maintain order
-      visiblePositions.sort((a, b) => a - b);
+      // Pass 2: Fill remaining slots with unpinned rows from bottom to top
+      const remainingSlots = maxRows - selectedPositions.size;
+      if (remainingSlots > 0) {
+        let addedCount = 0;
+        for (let pos = totalTokens - 1; pos >= 0 && addedCount < remainingSlots; pos--) {
+          if (!pinnedPositions.has(pos)) {
+            selectedPositions.add(pos);
+            addedCount++;
+          }
+        }
+      }
+
+      // Convert to sorted array for proper row ordering
+      visiblePositions = Array.from(selectedPositions).sort((a, b) => a - b);
     }
 
     let html = "<colgroup>";
