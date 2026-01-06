@@ -519,6 +519,8 @@ class LogitLensV2Request(BaseModel):
     model: str
     prompt: str
     k: int = 5  # Top-k predictions to track
+    include_rank: bool = True  # Whether to include rank trajectories
+    include_entropy: bool = True  # Whether to include entropy data
 
 
 class LogitLensV2Meta(BaseModel):
@@ -531,7 +533,8 @@ class LogitLensV2Response(NDIFResponse):
     input: list[str] | None = None
     layers: list[int] | None = None
     topk: list[list[list[str]]] | None = None  # [layer][position][k]
-    tracked: list[dict[str, list[float]]] | None = None  # [position]{token: trajectory}
+    tracked: list[dict[str, dict | list[float]]] | None = None  # [position]{token: {prob, rank} or trajectory}
+    entropy: list[list[float]] | None = None  # [layer][position] - entropy at each position/layer
 
 
 def collect_logit_lens_v2(
@@ -546,6 +549,9 @@ def collect_logit_lens_v2(
     model = state[req.model]
     tok = model.tokenizer
     k = req.k
+    # Extract booleans before trace context to avoid serialization issues
+    include_rank = req.include_rank
+    include_entropy = req.include_entropy
 
     with model.trace(
         req.prompt,
@@ -554,6 +560,7 @@ def collect_logit_lens_v2(
     ) as tracer:
         all_probs = []
         all_topk = []
+        all_entropy = [] if include_entropy else None
 
         for layer in model.model.layers:
             # Get hidden state
@@ -568,6 +575,12 @@ def collect_logit_lens_v2(
             all_probs.append(probs)
             all_topk.append(probs.topk(k, dim=-1).indices)
 
+            # Compute entropy if requested
+            if include_entropy:
+                log_probs = t.nn.functional.log_softmax(logits[0], dim=-1)
+                entropy = -(probs * log_probs).sum(dim=-1)
+                all_entropy.append(entropy)
+
         # Stack top-k indices: [n_layers, n_pos, k]
         topk = t.stack(all_topk).to(t.int32)
         n_layers = len(all_probs)
@@ -575,21 +588,51 @@ def collect_logit_lens_v2(
 
         # For each position: find unique tokens across all layers, extract trajectories
         tracked = []
-        probs_out = []
+        probs = []
+        ranks = [] if include_rank else None
         for pos in range(n_pos):
             # Union of all tokens appearing in top-k at any layer
             unique = t.unique(topk[:, pos, :].flatten()).to(t.int32)
             # Extract probability trajectory for each unique token
             traj = t.stack([all_probs[li][pos, unique] for li in range(n_layers)])
             tracked.append(unique)
-            probs_out.append(traj)
+            probs.append(traj)
 
-        result = {"topk": topk, "tracked": tracked, "probs": probs_out}.save()
+            # Compute rank trajectories if requested
+            if include_rank:
+                rank_traj = []
+                for li in range(n_layers):
+                    # Get ranks by sorting probabilities
+                    sorted_indices = all_probs[li][pos].argsort(descending=True)
+                    # Create rank map: rank_map[token_id] = rank (1-indexed)
+                    rank_map = t.empty_like(sorted_indices)
+                    rank_map[sorted_indices] = t.arange(1, len(sorted_indices) + 1, device=sorted_indices.device)
+                    # Get ranks for our tracked tokens
+                    token_ranks = rank_map[unique]
+                    rank_traj.append(token_ranks)
+                ranks.append(t.stack(rank_traj))
+
+        # Save as lists - nnsight will use variable names as keys
+        topk.save()
+        tracked.save()
+        probs.save()
+        if include_rank:
+            ranks.save()
+        if include_entropy:
+            entropy = t.stack(all_entropy)
+            entropy.save()
 
     if state.remote:
         return tracer.backend.job_id
 
-    return result
+    # For local execution, return the resolved values
+    return {
+        "topk": topk,
+        "tracked": tracked,
+        "probs": probs,
+        "ranks": ranks if include_rank else None,
+        "entropy": t.stack(all_entropy) if include_entropy else None,
+    }
 
 
 def process_v2_results(
@@ -604,6 +647,8 @@ def process_v2_results(
     topk_tensor = result["topk"]
     tracked_list = result["tracked"]
     probs_list = result["probs"]
+    ranks_list = result.get("ranks")  # May be None if not requested
+    entropy_tensor = result.get("entropy")  # May be None if not requested
 
     n_layers = topk_tensor.shape[0]
     n_pos = topk_tensor.shape[1]
@@ -621,25 +666,49 @@ def process_v2_results(
         for li in range(n_layers)
     ]
 
-    # Convert tracked/probs to dict format: [position]{token: trajectory}
-    tracked_dict = [
-        {
-            vocab[idx.item()]: [round(p, 5) for p in probs_list[pos][:, i].tolist()]
-            for i, idx in enumerate(tracked_list[pos])
-        }
-        for pos in range(n_pos)
-    ]
+    # Convert tracked/probs to dict format: [position]{token: {prob, rank} or trajectory}
+    if ranks_list is not None:
+        # Include both prob and rank in TrackedTrajectory format
+        tracked_dict = [
+            {
+                vocab[idx.item()]: {
+                    "prob": [round(p, 5) for p in probs_list[pos][:, i].tolist()],
+                    "rank": [int(r) for r in ranks_list[pos][:, i].tolist()]
+                }
+                for i, idx in enumerate(tracked_list[pos])
+            }
+            for pos in range(n_pos)
+        ]
+    else:
+        # Just probability trajectories (backward compatible)
+        tracked_dict = [
+            {
+                vocab[idx.item()]: [round(p, 5) for p in probs_list[pos][:, i].tolist()]
+                for i, idx in enumerate(tracked_list[pos])
+            }
+            for pos in range(n_pos)
+        ]
 
     # Get input tokens
     input_tokens = [tok.decode([t]) for t in tok.encode(req.prompt)]
 
-    return {
+    response = {
         "meta": {"version": 2, "model": req.model},
         "input": input_tokens,
         "layers": list(range(n_layers)),
         "topk": topk_str,
         "tracked": tracked_dict,
     }
+
+    # Add entropy if requested and available
+    if entropy_tensor is not None:
+        # Convert to [layer][position] format
+        response["entropy"] = [
+            [round(e, 5) for e in entropy_tensor[li].tolist()]
+            for li in range(n_layers)
+        ]
+
+    return response
 
 
 @router.post("/start-v2", response_model=LogitLensV2Response)

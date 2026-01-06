@@ -8,6 +8,7 @@ import { usePrediction } from "@/lib/api/modelsApi";
 import type { LensConfigData, LensHeatmapMetrics, LensLineMetrics } from "@/types/lens";
 import { Metrics } from "@/types/lens";
 import { TargetTokenSelector } from "./TargetTokenSelector";
+import { DisplayControls } from "./DisplayControls";
 import { encodeText } from "@/actions/tok";
 import { useUpdateChartConfig } from "@/lib/api/configApi";
 import { useParams } from "next/navigation";
@@ -470,6 +471,7 @@ export function CompletionCard({ initialConfig, chartType, selectedModel }: Comp
                                 configId={initialConfig.id}
                             />
                         </div>
+                        <DisplayControls />
                     </div>
                 </div>
             )}

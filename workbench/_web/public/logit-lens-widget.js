@@ -114,7 +114,7 @@ var LogitLensWidgetModule = (() => {
     return `
     #${uid} {
       font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      margin: 20px 0;
+      margin: 0;
       padding: 0;
       position: relative;
       -webkit-user-select: none;
@@ -122,11 +122,11 @@ var LogitLensWidgetModule = (() => {
     }
     #${uid} .ll-title { font-size: var(--ll-title-size, 14px); font-weight: 600; margin-bottom: 8px; padding: 2px 0; }
     #${uid} .color-mode-btn {
-      display: inline-block; padding: 0; background: white;
+      display: inline-block; padding: 0; background: transparent;
       border-radius: 4px; font-size: var(--ll-title-size, 14px); cursor: pointer; color: #333;
       border: none;
     }
-    #${uid} .color-mode-btn:hover { background: #f5f5f5; }
+    #${uid} .color-mode-btn:hover { background: rgba(0,0,0,0.05); }
     #${uid} .ll-table { border-collapse: collapse; font-size: var(--ll-content-size, 14px); table-layout: fixed; }
     #${uid} .ll-table td, #${uid} .ll-table th { border: 1px solid #ddd; box-sizing: border-box; }
     #${uid} .pred-cell {
@@ -219,8 +219,8 @@ var LogitLensWidgetModule = (() => {
     /* Dark mode styles */
     #${uid}.dark-mode { background: #1e1e1e; color: #e0e0e0; }
     #${uid}.dark-mode .ll-title { color: #e0e0e0; }
-    #${uid}.dark-mode .color-mode-btn { background: #2d2d2d; color: #e0e0e0; }
-    #${uid}.dark-mode .color-mode-btn:hover { background: #3d3d3d; }
+    #${uid}.dark-mode .color-mode-btn { background: transparent; color: #e0e0e0; }
+    #${uid}.dark-mode .color-mode-btn:hover { background: rgba(255,255,255,0.1); }
     #${uid}.dark-mode .ll-table td, #${uid}.dark-mode .ll-table th { border-color: #444; }
     #${uid}.dark-mode .pred-cell { color: #e0e0e0; }
     #${uid}.dark-mode .pred-cell.selected { background: #4a4a00 !important; color: #fff !important; }
@@ -395,7 +395,9 @@ var LogitLensWidgetModule = (() => {
       overlay: () => document.getElementById(uid + "_overlay"),
       resizeHint: () => document.getElementById(uid + "_resize_hint"),
       resizeBottom: () => document.getElementById(uid + "_resize_bottom"),
-      resizeRight: () => document.getElementById(uid + "_resize_right")
+      resizeRight: () => document.getElementById(uid + "_resize_right"),
+      chartContainer: () => document.getElementById(uid + "_chart_container"),
+      tableWrapper: () => document.getElementById(uid)?.querySelector(".table-wrapper")
     };
   }
   function getContentFontSizePx(dom) {
@@ -446,7 +448,6 @@ var LogitLensWidgetModule = (() => {
     const actualInputRight = inputCellRect ? inputCellRect.right - tableRect.left : state.inputTokenWidth;
     const legendG = document.createElementNS("http://www.w3.org/2000/svg", "g");
     legendG.setAttribute("class", "legend-area");
-    svg.appendChild(legendG);
     const chartMargin = getChartMargin(dom);
     const chartHeight = getActualChartHeight();
     const chartInnerHeight = chartHeight - chartMargin.top - chartMargin.bottom;
@@ -783,7 +784,55 @@ var LogitLensWidgetModule = (() => {
     const legendCloseX = -12 * fontScale;
     const legendIndent = 18 * fontScale;
     const legendTotalHeight = legendEntryCount * legendEntryHeight;
-    let legendY = chartMargin.top + Math.max(10 * fontScale, (chartInnerHeight - legendTotalHeight) / 2);
+    const legendStartY = chartMargin.top + Math.max(10 * fontScale, (chartInnerHeight - legendTotalHeight) / 2);
+    let legendY = legendStartY;
+    const isMultiRowMode = state.pinnedRows.length > 1 && state.pinnedGroups.length === 1;
+    const legendLabels = [];
+    let legendRightEdge;
+    if (isMultiRowMode) {
+      const groupLabel = ctx.getGroupLabel(state.pinnedGroups[0]);
+      const rowLabels = [];
+      state.pinnedRows.forEach((row) => {
+        const token = data.tokens[row.pos] || `pos ${row.pos}`;
+        rowLabels.push(visualizeSpaces(token));
+      });
+      const groupLabelWidth = groupLabel.length * 7 * fontScale;
+      const groupRightEdge = legendIndent - 5 * fontScale + groupLabelWidth;
+      const maxRowLabelLength = Math.max(...rowLabels.map((l) => l.length), 0);
+      const rowTextWidth = maxRowLabelLength * 7 * fontScale;
+      const rowRightEdge = legendIndent + 20 * fontScale + rowTextWidth;
+      legendRightEdge = Math.max(groupRightEdge, rowRightEdge);
+      legendLabels.push(groupLabel, ...rowLabels);
+    } else {
+      state.pinnedGroups.forEach((group) => {
+        legendLabels.push(ctx.getGroupLabel(group));
+      });
+      const maxLabelLength = Math.max(...legendLabels.map((l) => l.length), 0);
+      const estimatedTextWidth = maxLabelLength * 7 * fontScale;
+      legendRightEdge = legendIndent + 20 * fontScale + estimatedTextWidth;
+    }
+    if (hoverLabel) {
+      legendLabels.push(visualizeSpaces(hoverLabel));
+      const hoverTextWidth = visualizeSpaces(hoverLabel).length * 7 * fontScale;
+      const hoverRightEdge = legendIndent + 20 * fontScale + hoverTextWidth;
+      legendRightEdge = Math.max(legendRightEdge, hoverRightEdge);
+    }
+    const legendProtrudesIntoChart = legendRightEdge > actualInputRight && legendEntryCount > 0;
+    if (legendProtrudesIntoChart) {
+      const bgPadding = 3 * fontScale;
+      const closeButtonSpace = 15;
+      const legendLeftEdge = isMultiRowMode ? legendIndent - 5 * fontScale - bgPadding - closeButtonSpace : legendIndent - bgPadding - closeButtonSpace;
+      const bgRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      bgRect.setAttribute("x", String(legendLeftEdge));
+      bgRect.setAttribute("y", String(legendStartY - legendEntryHeight / 2 - bgPadding));
+      bgRect.setAttribute("width", String(legendRightEdge - legendLeftEdge + bgPadding));
+      bgRect.setAttribute("height", String(legendTotalHeight + bgPadding * 2));
+      bgRect.setAttribute("rx", String(4 * fontScale));
+      bgRect.setAttribute("fill", isDarkMode() ? "#252525" : "#fafafa");
+      bgRect.setAttribute("stroke", isDarkMode() ? "#444" : "#ddd");
+      bgRect.setAttribute("stroke-width", "1");
+      legendG.appendChild(bgRect);
+    }
     positionsToShow.forEach((showPos) => {
       const lineStyle = ctx.getLineStyleForRow(showPos);
       state.pinnedGroups.forEach((group) => {
@@ -808,66 +857,170 @@ var LogitLensWidgetModule = (() => {
         );
       });
     });
-    state.pinnedGroups.forEach((group, groupIdx) => {
+    if (isMultiRowMode) {
+      const group = state.pinnedGroups[0];
       const groupLabel = ctx.getGroupLabel(group);
-      const legendItem = document.createElementNS("http://www.w3.org/2000/svg", "g");
-      legendItem.setAttribute(
-        "transform",
-        `translate(${legendIndent}, ${legendY})`
-      );
-      legendItem.style.cursor = "pointer";
-      const hitTarget = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-      hitTarget.setAttribute("x", "-15");
-      hitTarget.setAttribute("y", "-8");
-      hitTarget.setAttribute("width", String(state.inputTokenWidth - 5));
-      hitTarget.setAttribute("height", "14");
-      hitTarget.setAttribute("fill", "transparent");
-      legendItem.appendChild(hitTarget);
-      const closeBtn = document.createElementNS("http://www.w3.org/2000/svg", "text");
-      closeBtn.setAttribute("class", "legend-close");
-      closeBtn.setAttribute("x", String(legendCloseX));
-      closeBtn.setAttribute("y", "4");
-      closeBtn.style.fontSize = "var(--ll-title-size, 20px)";
-      closeBtn.setAttribute("fill", "#999");
-      closeBtn.style.display = "none";
-      closeBtn.textContent = "\xD7";
-      legendItem.appendChild(closeBtn);
-      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-      line.setAttribute("x1", "0");
-      line.setAttribute("y1", "0");
-      line.setAttribute("x2", String(15 * fontScale));
-      line.setAttribute("y2", "0");
-      line.setAttribute("stroke", group.color);
-      line.setAttribute("stroke-width", String(strokeWidth));
-      legendItem.appendChild(line);
-      const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
-      text.setAttribute("x", String(20 * fontScale));
-      text.setAttribute("y", String(legendTextY));
-      text.style.fontSize = "var(--ll-content-size, 14px)";
-      text.setAttribute("fill", isDarkMode() ? "#ddd" : "#333");
-      text.textContent = groupLabel;
-      legendItem.appendChild(text);
-      legendItem.addEventListener("mouseenter", () => {
-        closeBtn.style.display = "block";
+      const rowIndent = legendIndent + 10 * fontScale;
+      const groupItem = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      groupItem.setAttribute("transform", `translate(${legendIndent - 5 * fontScale}, ${legendY})`);
+      groupItem.style.cursor = "pointer";
+      const groupHitTarget = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      groupHitTarget.setAttribute("x", "-15");
+      groupHitTarget.setAttribute("y", "-8");
+      groupHitTarget.setAttribute("width", String(state.inputTokenWidth - 5));
+      groupHitTarget.setAttribute("height", "14");
+      groupHitTarget.setAttribute("fill", "transparent");
+      groupItem.appendChild(groupHitTarget);
+      const groupCloseBtn = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      groupCloseBtn.setAttribute("class", "legend-close");
+      groupCloseBtn.setAttribute("x", String(legendCloseX));
+      groupCloseBtn.setAttribute("y", "0");
+      groupCloseBtn.setAttribute("dominant-baseline", "middle");
+      groupCloseBtn.style.fontSize = "var(--ll-content-size, 14px)";
+      groupCloseBtn.setAttribute("fill", "#999");
+      groupCloseBtn.style.display = "none";
+      groupCloseBtn.textContent = "\xD7";
+      groupItem.appendChild(groupCloseBtn);
+      const groupText = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      groupText.setAttribute("x", "0");
+      groupText.setAttribute("y", String(legendTextY));
+      groupText.style.fontSize = "var(--ll-content-size, 14px)";
+      groupText.setAttribute("fill", group.color);
+      groupText.style.fontWeight = "500";
+      groupText.textContent = groupLabel;
+      groupItem.appendChild(groupText);
+      groupItem.addEventListener("mouseenter", () => {
+        groupCloseBtn.style.display = "block";
       });
-      legendItem.addEventListener("mouseleave", () => {
-        closeBtn.style.display = "none";
+      groupItem.addEventListener("mouseleave", () => {
+        groupCloseBtn.style.display = "none";
       });
-      closeBtn.addEventListener("click", (e) => {
+      groupCloseBtn.addEventListener("click", (e) => {
         e.stopPropagation();
-        state.pinnedGroups.splice(groupIdx, 1);
-        if (state.lastPinnedGroupIndex >= state.pinnedGroups.length) {
-          state.lastPinnedGroupIndex = state.pinnedGroups.length - 1;
-        }
-        ctx.buildTable(
-          state.currentCellWidth,
-          state.currentVisibleIndices,
-          state.currentMaxRows
-        );
+        state.pinnedGroups.splice(0, 1);
+        state.lastPinnedGroupIndex = -1;
+        ctx.buildTable(state.currentCellWidth, state.currentVisibleIndices, state.currentMaxRows);
       });
-      legendG.appendChild(legendItem);
+      legendG.appendChild(groupItem);
       legendY += legendEntryHeight;
-    });
+      state.pinnedRows.forEach((row, rowIdx) => {
+        const token = data.tokens[row.pos] || `pos ${row.pos}`;
+        const rowLabel = visualizeSpaces(token);
+        const rowItem = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        rowItem.setAttribute("transform", `translate(${legendIndent}, ${legendY})`);
+        rowItem.style.cursor = "pointer";
+        const rowHitTarget = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        rowHitTarget.setAttribute("x", "-15");
+        rowHitTarget.setAttribute("y", "-8");
+        rowHitTarget.setAttribute("width", String(state.inputTokenWidth - 5));
+        rowHitTarget.setAttribute("height", "14");
+        rowHitTarget.setAttribute("fill", "transparent");
+        rowItem.appendChild(rowHitTarget);
+        const rowCloseBtn = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        rowCloseBtn.setAttribute("class", "legend-close");
+        rowCloseBtn.setAttribute("x", String(legendCloseX));
+        rowCloseBtn.setAttribute("y", "0");
+        rowCloseBtn.setAttribute("dominant-baseline", "middle");
+        rowCloseBtn.style.fontSize = "var(--ll-content-size, 14px)";
+        rowCloseBtn.setAttribute("fill", "#999");
+        rowCloseBtn.style.display = "none";
+        rowCloseBtn.textContent = "\xD7";
+        rowItem.appendChild(rowCloseBtn);
+        const rowLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        rowLine.setAttribute("x1", "0");
+        rowLine.setAttribute("y1", "0");
+        rowLine.setAttribute("x2", String(15 * fontScale));
+        rowLine.setAttribute("y2", "0");
+        rowLine.setAttribute("stroke", group.color);
+        rowLine.setAttribute("stroke-width", String(strokeWidth));
+        if (row.lineStyle.dash) {
+          rowLine.setAttribute("stroke-dasharray", row.lineStyle.dash);
+        }
+        rowItem.appendChild(rowLine);
+        const rowText = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        rowText.setAttribute("x", String(20 * fontScale));
+        rowText.setAttribute("y", String(legendTextY));
+        rowText.style.fontSize = "var(--ll-content-size, 14px)";
+        rowText.setAttribute("fill", isDarkMode() ? "#ddd" : "#333");
+        rowText.textContent = rowLabel;
+        rowItem.appendChild(rowText);
+        rowItem.addEventListener("mouseenter", () => {
+          rowCloseBtn.style.display = "block";
+        });
+        rowItem.addEventListener("mouseleave", () => {
+          rowCloseBtn.style.display = "none";
+        });
+        rowCloseBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          state.pinnedRows.splice(rowIdx, 1);
+          ctx.buildTable(state.currentCellWidth, state.currentVisibleIndices, state.currentMaxRows);
+        });
+        legendG.appendChild(rowItem);
+        legendY += legendEntryHeight;
+      });
+    } else {
+      state.pinnedGroups.forEach((group, groupIdx) => {
+        const groupLabel = ctx.getGroupLabel(group);
+        const legendItem = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        legendItem.setAttribute(
+          "transform",
+          `translate(${legendIndent}, ${legendY})`
+        );
+        legendItem.style.cursor = "pointer";
+        const hitTarget = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        hitTarget.setAttribute("x", "-15");
+        hitTarget.setAttribute("y", "-8");
+        hitTarget.setAttribute("width", String(state.inputTokenWidth - 5));
+        hitTarget.setAttribute("height", "14");
+        hitTarget.setAttribute("fill", "transparent");
+        legendItem.appendChild(hitTarget);
+        const closeBtn = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        closeBtn.setAttribute("class", "legend-close");
+        closeBtn.setAttribute("x", String(legendCloseX));
+        closeBtn.setAttribute("y", "0");
+        closeBtn.setAttribute("dominant-baseline", "middle");
+        closeBtn.style.fontSize = "var(--ll-content-size, 14px)";
+        closeBtn.setAttribute("fill", "#999");
+        closeBtn.style.display = "none";
+        closeBtn.textContent = "\xD7";
+        legendItem.appendChild(closeBtn);
+        const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        line.setAttribute("x1", "0");
+        line.setAttribute("y1", "0");
+        line.setAttribute("x2", String(15 * fontScale));
+        line.setAttribute("y2", "0");
+        line.setAttribute("stroke", group.color);
+        line.setAttribute("stroke-width", String(strokeWidth));
+        legendItem.appendChild(line);
+        const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        text.setAttribute("x", String(20 * fontScale));
+        text.setAttribute("y", String(legendTextY));
+        text.style.fontSize = "var(--ll-content-size, 14px)";
+        text.setAttribute("fill", isDarkMode() ? "#ddd" : "#333");
+        text.textContent = groupLabel;
+        legendItem.appendChild(text);
+        legendItem.addEventListener("mouseenter", () => {
+          closeBtn.style.display = "block";
+        });
+        legendItem.addEventListener("mouseleave", () => {
+          closeBtn.style.display = "none";
+        });
+        closeBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          state.pinnedGroups.splice(groupIdx, 1);
+          if (state.lastPinnedGroupIndex >= state.pinnedGroups.length) {
+            state.lastPinnedGroupIndex = state.pinnedGroups.length - 1;
+          }
+          ctx.buildTable(
+            state.currentCellWidth,
+            state.currentVisibleIndices,
+            state.currentMaxRows
+          );
+        });
+        legendG.appendChild(legendItem);
+        legendY += legendEntryHeight;
+      });
+    }
     if (hoverTrajectory && hoverLabel) {
       drawSingleTrajectory(
         trajG,
@@ -914,6 +1067,7 @@ var LogitLensWidgetModule = (() => {
       legendItem.appendChild(text);
       legendG.appendChild(legendItem);
     }
+    svg.appendChild(legendG);
   }
   function drawSingleTrajectory(g, trajectory, color, maxValue, label, isHover, chartInnerWidth, dashPattern, state, data, dom, layerToX, chartInnerHeight, fontScale, isRankMode = false) {
     if (!trajectory || trajectory.length === 0) return;
@@ -1022,6 +1176,8 @@ var LogitLensWidgetModule = (() => {
       heatmapNextColor: uiState?.heatmapNextColor ?? null,
       customTitle: uiState?.title ?? "Logit Lens: Top Predictions by Layer",
       darkModeOverride: uiState?.darkMode ?? null,
+      showHeatmap: uiState?.showHeatmap ?? true,
+      showChart: uiState?.showChart ?? true,
       linkedWidgets: [],
       isSyncing: false,
       colResizeDrag: { active: false, type: null, startX: 0, startWidth: 0, colIdx: 0 },
@@ -1314,11 +1470,26 @@ var LogitLensWidgetModule = (() => {
       if (maxRows === null || maxRows >= totalTokens) {
         visiblePositions = data.tokens.map((_, i) => i);
       } else {
+        const pinnedPositions = new Set(state.pinnedRows.map((pr) => pr.pos));
         const startPos = totalTokens - maxRows;
-        visiblePositions = [];
-        for (let i = startPos; i < totalTokens; i++) {
-          visiblePositions.push(i);
+        const extraPinnedPositions = [];
+        for (const pos of pinnedPositions) {
+          if (pos < startPos) {
+            extraPinnedPositions.push(pos);
+          }
         }
+        extraPinnedPositions.sort((a, b) => a - b);
+        const pinnedInRange = Array.from(pinnedPositions).filter((pos) => pos >= startPos).length;
+        const pinnedOutOfRange = extraPinnedPositions.length;
+        const availableForNonPinned = maxRows - pinnedInRange - pinnedOutOfRange;
+        visiblePositions = [...extraPinnedPositions];
+        const adjustedStartPos = Math.max(startPos, totalTokens - availableForNonPinned - pinnedInRange);
+        for (let i = adjustedStartPos; i < totalTokens; i++) {
+          if (!extraPinnedPositions.includes(i)) {
+            visiblePositions.push(i);
+          }
+        }
+        visiblePositions.sort((a, b) => a - b);
       }
       let html = "<colgroup>";
       html += `<col style="width:${state.inputTokenWidth}px;">`;
@@ -1441,6 +1612,7 @@ var LogitLensWidgetModule = (() => {
       const chartInnerWidth = updateChartDimensions();
       drawAllTrajectoriesWrapper(null, null, null, chartInnerWidth, state.currentHoverPos);
       updateTitle();
+      updateVisibility();
       const hint = dom.resizeHint();
       if (hint) {
         const hintMain = state.currentStride > 1 ? `showing every ${state.currentStride} layers ending at ${nLayers - 1}` : `showing all ${nLayers} layers`;
@@ -1531,13 +1703,14 @@ var LogitLensWidgetModule = (() => {
       const input = document.createElement("input");
       input.type = "text";
       input.value = currentText;
-      input.style.cssText = `font-size: var(--ll-title-size, 20px); font-weight: 600; font-family: inherit; border: 1px solid #2196F3; border-radius: 3px; padding: 1px 4px; outline: none; width: ${Math.max(200, titleTextEl.offsetWidth)}px;${isDarkMode() ? " background: #1e1e1e; color: #e0e0e0;" : ""}`;
+      input.style.cssText = `font-size: var(--ll-title-size, 14px); font-weight: 600; font-family: inherit; border: 1px solid #2196F3; border-radius: 3px; padding: 1px 4px; outline: none; width: ${Math.max(200, titleTextEl.offsetWidth)}px;${isDarkMode() ? " background: #1e1e1e; color: #e0e0e0;" : ""}`;
       titleTextEl.innerHTML = "";
       titleTextEl.appendChild(input);
       input.focus();
       input.select();
       function finishEdit() {
         const newTitle = input.value.trim();
+        const oldTitle = state.customTitle;
         if (newTitle) {
           state.customTitle = newTitle;
         } else {
@@ -1548,6 +1721,9 @@ var LogitLensWidgetModule = (() => {
           state.customTitle = tokens.join("");
         }
         updateTitle();
+        if (state.customTitle !== oldTitle && eventHandlers.onTitleChange) {
+          eventHandlers.onTitleChange(state.customTitle);
+        }
       }
       input.addEventListener("blur", finishEdit);
       input.addEventListener("keydown", (ev) => {
@@ -1560,6 +1736,20 @@ var LogitLensWidgetModule = (() => {
           input.blur();
         }
       });
+    }
+    function updateVisibility() {
+      const tableWrapper = dom.tableWrapper();
+      const chartContainer = dom.chartContainer();
+      if (tableWrapper) {
+        tableWrapper.style.display = state.showHeatmap ? "" : "none";
+      }
+      if (chartContainer) {
+        chartContainer.style.display = state.showChart ? "" : "none";
+      }
+      const resizeHint = dom.resizeHint();
+      if (resizeHint) {
+        resizeHint.style.display = state.showHeatmap ? "" : "none";
+      }
     }
     function showColorModeMenu(e) {
       e.stopPropagation();
@@ -2326,6 +2516,14 @@ var LogitLensWidgetModule = (() => {
       setEventHandlers(handlers) {
         eventHandlers = handlers;
       },
+      // Title management
+      setTitle(title) {
+        state.customTitle = title;
+        updateTitle();
+      },
+      getTitle() {
+        return state.customTitle;
+      },
       // Metric mode API for trajectories
       setTrajectoryMetric(metric) {
         if (metric === "rank" && !hasRankData()) {
@@ -2365,6 +2563,21 @@ var LogitLensWidgetModule = (() => {
       },
       hasEntropyData() {
         return hasEntropyData();
+      },
+      // Visibility toggles
+      setShowHeatmap(show) {
+        state.showHeatmap = show;
+        updateVisibility();
+      },
+      getShowHeatmap() {
+        return state.showHeatmap;
+      },
+      setShowChart(show) {
+        state.showChart = show;
+        updateVisibility();
+      },
+      getShowChart() {
+        return state.showChart;
       }
     };
     return publicInterface;

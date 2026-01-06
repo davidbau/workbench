@@ -128,6 +128,8 @@ export function LogitLensWidget(
     heatmapNextColor: uiState?.heatmapNextColor ?? null,
     customTitle: uiState?.title ?? "Logit Lens: Top Predictions by Layer",
     darkModeOverride: uiState?.darkMode ?? null,
+    showHeatmap: uiState?.showHeatmap ?? true,
+    showChart: uiState?.showChart ?? true,
     linkedWidgets: [],
     isSyncing: false,
     colResizeDrag: { active: false, type: null, startX: 0, startWidth: 0, colIdx: 0 },
@@ -515,11 +517,37 @@ export function LogitLensWidget(
     if (maxRows === null || maxRows >= totalTokens) {
       visiblePositions = data.tokens.map((_, i) => i);
     } else {
+      // Get pinned row positions
+      const pinnedPositions = new Set(state.pinnedRows.map((pr) => pr.pos));
+
+      // Start with pinned positions that would be hidden (before the normal cutoff)
       const startPos = totalTokens - maxRows;
-      visiblePositions = [];
-      for (let i = startPos; i < totalTokens; i++) {
-        visiblePositions.push(i);
+      const extraPinnedPositions: number[] = [];
+      for (const pos of pinnedPositions) {
+        if (pos < startPos) {
+          extraPinnedPositions.push(pos);
+        }
       }
+      extraPinnedPositions.sort((a, b) => a - b);
+
+      // Calculate how many non-pinned rows we can show
+      const pinnedInRange = Array.from(pinnedPositions).filter((pos) => pos >= startPos).length;
+      const pinnedOutOfRange = extraPinnedPositions.length;
+      const availableForNonPinned = maxRows - pinnedInRange - pinnedOutOfRange;
+
+      // Build visible positions: start with extra pinned rows, then recent rows
+      visiblePositions = [...extraPinnedPositions];
+
+      // Add recent rows, skipping pinned ones we already added if needed
+      const adjustedStartPos = Math.max(startPos, totalTokens - availableForNonPinned - pinnedInRange);
+      for (let i = adjustedStartPos; i < totalTokens; i++) {
+        if (!extraPinnedPositions.includes(i)) {
+          visiblePositions.push(i);
+        }
+      }
+
+      // Sort to maintain order
+      visiblePositions.sort((a, b) => a - b);
     }
 
     let html = "<colgroup>";
@@ -698,6 +726,7 @@ export function LogitLensWidget(
     const chartInnerWidth = updateChartDimensions();
     drawAllTrajectoriesWrapper(null, null, null, chartInnerWidth, state.currentHoverPos);
     updateTitle();
+    updateVisibility();
 
     const hint = dom.resizeHint();
     if (hint) {
@@ -813,7 +842,7 @@ export function LogitLensWidget(
     const input = document.createElement("input");
     input.type = "text";
     input.value = currentText;
-    input.style.cssText = `font-size: var(--ll-title-size, 20px); font-weight: 600; font-family: inherit; border: 1px solid #2196F3; border-radius: 3px; padding: 1px 4px; outline: none; width: ${Math.max(200, titleTextEl.offsetWidth)}px;${isDarkMode() ? " background: #1e1e1e; color: #e0e0e0;" : ""}`;
+    input.style.cssText = `font-size: var(--ll-title-size, 14px); font-weight: 600; font-family: inherit; border: 1px solid #2196F3; border-radius: 3px; padding: 1px 4px; outline: none; width: ${Math.max(200, titleTextEl.offsetWidth)}px;${isDarkMode() ? " background: #1e1e1e; color: #e0e0e0;" : ""}`;
 
     titleTextEl.innerHTML = "";
     titleTextEl.appendChild(input);
@@ -822,6 +851,7 @@ export function LogitLensWidget(
 
     function finishEdit(): void {
       const newTitle = input.value.trim();
+      const oldTitle = state.customTitle;
       if (newTitle) {
         state.customTitle = newTitle;
       } else {
@@ -832,6 +862,10 @@ export function LogitLensWidget(
         state.customTitle = tokens.join("");
       }
       updateTitle();
+      // Fire event if title changed
+      if (state.customTitle !== oldTitle && eventHandlers.onTitleChange) {
+        eventHandlers.onTitleChange(state.customTitle);
+      }
     }
 
     input.addEventListener("blur", finishEdit);
@@ -845,6 +879,24 @@ export function LogitLensWidget(
         input.blur();
       }
     });
+  }
+
+  function updateVisibility(): void {
+    const tableWrapper = dom.tableWrapper();
+    const chartContainer = dom.chartContainer();
+
+    if (tableWrapper) {
+      tableWrapper.style.display = state.showHeatmap ? "" : "none";
+    }
+    if (chartContainer) {
+      chartContainer.style.display = state.showChart ? "" : "none";
+    }
+
+    // Also hide resize hint if heatmap is hidden
+    const resizeHint = dom.resizeHint();
+    if (resizeHint) {
+      resizeHint.style.display = state.showHeatmap ? "" : "none";
+    }
   }
 
   function showColorModeMenu(e: Event): void {
@@ -1759,6 +1811,14 @@ export function LogitLensWidget(
     setEventHandlers(handlers: WidgetEventHandlers): void {
       eventHandlers = handlers;
     },
+    // Title management
+    setTitle(title: string): void {
+      state.customTitle = title;
+      updateTitle();
+    },
+    getTitle(): string {
+      return state.customTitle;
+    },
     // Metric mode API for trajectories
     setTrajectoryMetric(metric: TrajectoryMetric): void {
       if (metric === "rank" && !hasRankData()) {
@@ -1799,6 +1859,21 @@ export function LogitLensWidget(
     },
     hasEntropyData(): boolean {
       return hasEntropyData();
+    },
+    // Visibility toggles
+    setShowHeatmap(show: boolean): void {
+      state.showHeatmap = show;
+      updateVisibility();
+    },
+    getShowHeatmap(): boolean {
+      return state.showHeatmap;
+    },
+    setShowChart(show: boolean): void {
+      state.showChart = show;
+      updateVisibility();
+    },
+    getShowChart(): boolean {
+      return state.showChart;
     },
   };
 

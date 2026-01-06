@@ -153,6 +153,8 @@ export function createDOMHelpers(uid: string): DOMHelpers {
     resizeHint: () => document.getElementById(uid + "_resize_hint"),
     resizeBottom: () => document.getElementById(uid + "_resize_bottom"),
     resizeRight: () => document.getElementById(uid + "_resize_right"),
+    chartContainer: () => document.getElementById(uid + "_chart_container"),
+    tableWrapper: () => document.getElementById(uid)?.querySelector(".table-wrapper") as HTMLElement | null,
   };
 }
 

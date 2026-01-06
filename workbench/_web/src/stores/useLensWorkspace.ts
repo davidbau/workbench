@@ -23,6 +23,15 @@ interface LensWorkspaceState {
     // Widget actions
     togglePinnedRow: (pos: number) => boolean;
     togglePinnedTrajectory: (token: string, addToGroup?: boolean) => boolean;
+
+    // Visibility and metric state
+    showHeatmap: boolean;
+    setShowHeatmap: (show: boolean) => void;
+    showChart: boolean;
+    setShowChart: (show: boolean) => void;
+    trajectoryMetric: "prob" | "rank";
+    setTrajectoryMetric: (metric: "prob" | "rank") => void;
+    hasRankData: () => boolean;
 }
 
 export const useLensWorkspace = create<LensWorkspaceState>()((set, get) => ({
@@ -64,6 +73,39 @@ export const useLensWorkspace = create<LensWorkspaceState>()((set, get) => ({
         const { widgetRef } = get();
         if (widgetRef) {
             return widgetRef.togglePinnedTrajectory(token, addToGroup);
+        }
+        return false;
+    },
+
+    // Visibility and metric state
+    showHeatmap: true,
+    setShowHeatmap: (show) => {
+        const { widgetRef } = get();
+        if (widgetRef) {
+            widgetRef.setShowHeatmap(show);
+        }
+        set({ showHeatmap: show });
+    },
+    showChart: true,
+    setShowChart: (show) => {
+        const { widgetRef } = get();
+        if (widgetRef) {
+            widgetRef.setShowChart(show);
+        }
+        set({ showChart: show });
+    },
+    trajectoryMetric: "prob",
+    setTrajectoryMetric: (metric) => {
+        const { widgetRef } = get();
+        if (widgetRef) {
+            widgetRef.setTrajectoryMetric(metric);
+        }
+        set({ trajectoryMetric: metric });
+    },
+    hasRankData: () => {
+        const { widgetRef } = get();
+        if (widgetRef) {
+            return widgetRef.hasRankData();
         }
         return false;
     },

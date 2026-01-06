@@ -9,7 +9,7 @@ export function generateStyles(uid: string): string {
   return `
     #${uid} {
       font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      margin: 20px 0;
+      margin: 0;
       padding: 0;
       position: relative;
       -webkit-user-select: none;
@@ -17,11 +17,11 @@ export function generateStyles(uid: string): string {
     }
     #${uid} .ll-title { font-size: var(--ll-title-size, 14px); font-weight: 600; margin-bottom: 8px; padding: 2px 0; }
     #${uid} .color-mode-btn {
-      display: inline-block; padding: 0; background: white;
+      display: inline-block; padding: 0; background: transparent;
       border-radius: 4px; font-size: var(--ll-title-size, 14px); cursor: pointer; color: #333;
       border: none;
     }
-    #${uid} .color-mode-btn:hover { background: #f5f5f5; }
+    #${uid} .color-mode-btn:hover { background: rgba(0,0,0,0.05); }
     #${uid} .ll-table { border-collapse: collapse; font-size: var(--ll-content-size, 14px); table-layout: fixed; }
     #${uid} .ll-table td, #${uid} .ll-table th { border: 1px solid #ddd; box-sizing: border-box; }
     #${uid} .pred-cell {
@@ -114,8 +114,8 @@ export function generateStyles(uid: string): string {
     /* Dark mode styles */
     #${uid}.dark-mode { background: #1e1e1e; color: #e0e0e0; }
     #${uid}.dark-mode .ll-title { color: #e0e0e0; }
-    #${uid}.dark-mode .color-mode-btn { background: #2d2d2d; color: #e0e0e0; }
-    #${uid}.dark-mode .color-mode-btn:hover { background: #3d3d3d; }
+    #${uid}.dark-mode .color-mode-btn { background: transparent; color: #e0e0e0; }
+    #${uid}.dark-mode .color-mode-btn:hover { background: rgba(255,255,255,0.1); }
     #${uid}.dark-mode .ll-table td, #${uid}.dark-mode .ll-table th { border-color: #444; }
     #${uid}.dark-mode .pred-cell { color: #e0e0e0; }
     #${uid}.dark-mode .pred-cell.selected { background: #4a4a00 !important; color: #fff !important; }

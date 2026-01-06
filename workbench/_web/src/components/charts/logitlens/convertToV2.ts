@@ -30,12 +30,19 @@ export interface OldGridRow {
     right_axis_label?: string | null;
 }
 
+// Tracked trajectory with optional rank data
+export interface TrackedTrajectory {
+    prob: number[];
+    rank?: number[];
+}
+
 export interface LogitLensV2Data {
     meta: { version: number; model: string };
     input: string[];
     layers: number[];
     topk: string[][][]; // [layer][position][k]
-    tracked: Record<string, number[]>[]; // [position]{token: trajectory}
+    tracked: Record<string, number[] | TrackedTrajectory>[]; // [position]{token: trajectory or {prob, rank}}
+    entropy?: number[][]; // [layer][position] - entropy values
 }
 
 /**

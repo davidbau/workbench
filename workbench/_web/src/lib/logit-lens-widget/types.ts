@@ -141,6 +141,8 @@ export interface UIState {
   heatmapNextColor?: string | null;
   darkMode?: boolean | null;
   trajectoryMetric?: TrajectoryMetric; // probability or rank for trajectory chart
+  showHeatmap?: boolean;
+  showChart?: boolean;
 }
 
 /** Column state for widget linking */
@@ -230,6 +232,8 @@ export interface WidgetState {
   // Display settings
   customTitle: string;
   darkModeOverride: boolean | null;
+  showHeatmap: boolean;
+  showChart: boolean;
 
   // Widget linking
   linkedWidgets: LogitLensWidgetInterface[];
@@ -253,6 +257,8 @@ export interface WidgetEventHandlers {
   onRowPinChange?: (pinnedRows: SerializedPinnedRow[]) => void;
   /** Called when pinned token groups change (token pin/unpin) */
   onGroupPinChange?: (pinnedGroups: PinnedGroup[]) => void;
+  /** Called when the title is changed by the user */
+  onTitleChange?: (title: string) => void;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -279,6 +285,9 @@ export interface LogitLensWidgetInterface {
   getPinnedGroups(): PinnedGroup[];
   // Event handlers
   setEventHandlers(handlers: WidgetEventHandlers): void;
+  // Title management
+  setTitle(title: string): void;
+  getTitle(): string;
   // Metric mode API for trajectories
   setTrajectoryMetric(metric: TrajectoryMetric): void;
   getTrajectoryMetric(): TrajectoryMetric;
@@ -290,6 +299,11 @@ export interface LogitLensWidgetInterface {
   // Data availability checks
   hasRankData(): boolean;
   hasEntropyData(): boolean;
+  // Visibility toggles
+  setShowHeatmap(show: boolean): void;
+  getShowHeatmap(): boolean;
+  setShowChart(show: boolean): void;
+  getShowChart(): boolean;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -314,6 +328,8 @@ export interface DOMHelpers {
   resizeHint(): HTMLElement | null;
   resizeBottom(): HTMLElement | null;
   resizeRight(): HTMLElement | null;
+  chartContainer(): HTMLElement | null;
+  tableWrapper(): HTMLElement | null;
 }
 
 // ═══════════════════════════════════════════════════════════════

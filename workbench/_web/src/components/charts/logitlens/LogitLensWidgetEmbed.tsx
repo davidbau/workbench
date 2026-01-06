@@ -4,13 +4,20 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
 
+// Tracked trajectory with optional rank data
+export interface TrackedTrajectory {
+    prob: number[];
+    rank?: number[];
+}
+
 // Type for widget data in V2 format
 export interface LogitLensV2Data {
     meta: { version: number; model: string };
     input: string[];
     layers: number[];
     topk: string[][][]; // [layer][position][k]
-    tracked: Record<string, number[]>[]; // [position]{token: trajectory}
+    tracked: Record<string, number[] | TrackedTrajectory>[]; // [position]{token: trajectory or {prob, rank}}
+    entropy?: number[][]; // [layer][position] - entropy values
 }
 
 // Pinned group type
@@ -44,7 +51,20 @@ export interface LogitLensWidgetInterface {
     setEventHandlers: (handlers: {
         onRowPinChange?: (pinnedRows: SerializedPinnedRow[]) => void;
         onGroupPinChange?: (pinnedGroups: PinnedGroup[]) => void;
+        onTitleChange?: (title: string) => void;
     }) => void;
+    // Title management
+    setTitle: (title: string) => void;
+    getTitle: () => string;
+    // Visibility toggles
+    setShowHeatmap: (show: boolean) => void;
+    getShowHeatmap: () => boolean;
+    setShowChart: (show: boolean) => void;
+    getShowChart: () => boolean;
+    // Metric mode
+    setTrajectoryMetric: (metric: "prob" | "rank") => void;
+    getTrajectoryMetric: () => "prob" | "rank";
+    hasRankData: () => boolean;
 }
 
 // Declare the global LogitLensWidget function
@@ -63,11 +83,15 @@ interface LogitLensWidgetEmbedProps {
     title?: string;
     className?: string;
     pending?: boolean;
+    /** Maximum number of rows to display in heatmap (for viewport fitting) */
+    maxRows?: number | null;
     onWidgetReady?: (widget: LogitLensWidgetInterface) => void;
     /** Called when pinned rows change in the widget */
     onRowPinChange?: (pinnedRows: SerializedPinnedRow[]) => void;
     /** Called when pinned token groups change in the widget */
     onGroupPinChange?: (pinnedGroups: PinnedGroup[]) => void;
+    /** Called when the title is changed by the user */
+    onTitleChange?: (title: string) => void;
     /** External ref to access the widget instance */
     widgetRef?: React.MutableRefObject<LogitLensWidgetInterface | null>;
 }
@@ -77,9 +101,11 @@ export function LogitLensWidgetEmbed({
     title,
     className,
     pending = false,
+    maxRows,
     onWidgetReady,
     onRowPinChange,
     onGroupPinChange,
+    onTitleChange,
     widgetRef: externalWidgetRef,
 }: LogitLensWidgetEmbedProps) {
     const containerRef = useRef<HTMLDivElement>(null);
@@ -148,6 +174,9 @@ export function LogitLensWidgetEmbed({
                 if (title) {
                     uiState.title = title;
                 }
+                if (maxRows !== undefined) {
+                    uiState.maxRows = maxRows;
+                }
 
                 // Create widget
                 const widget = window.LogitLensWidget(
@@ -162,6 +191,7 @@ export function LogitLensWidgetEmbed({
                 widget.setEventHandlers({
                     onRowPinChange,
                     onGroupPinChange,
+                    onTitleChange,
                 });
 
                 // Detect dark mode from CSS
@@ -186,7 +216,17 @@ export function LogitLensWidgetEmbed({
         return () => {
             mounted = false;
         };
-    }, [data, title, pending, loadWidgetScript, onWidgetReady, widgetRef]);
+    }, [data, pending, loadWidgetScript, onWidgetReady, widgetRef]);
+
+    // Update title when prop changes (without re-creating widget)
+    useEffect(() => {
+        if (widgetRef.current && title !== undefined) {
+            const currentTitle = widgetRef.current.getTitle();
+            if (currentTitle !== title) {
+                widgetRef.current.setTitle(title);
+            }
+        }
+    }, [title, widgetRef]);
 
     // Update event handlers when they change (without re-creating widget)
     useEffect(() => {
@@ -194,9 +234,10 @@ export function LogitLensWidgetEmbed({
             widgetRef.current.setEventHandlers({
                 onRowPinChange,
                 onGroupPinChange,
+                onTitleChange,
             });
         }
-    }, [onRowPinChange, onGroupPinChange, widgetRef]);
+    }, [onRowPinChange, onGroupPinChange, onTitleChange, widgetRef]);
 
     // Update dark mode when theme changes
     useEffect(() => {

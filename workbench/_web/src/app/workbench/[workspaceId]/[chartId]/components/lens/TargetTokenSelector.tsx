@@ -92,7 +92,15 @@ export const TargetTokenSelector = ({ configId, config, setConfig }: TargetToken
     const inputRef = useRef<HTMLInputElement>(null);
     const suggestionsRef = useRef<HTMLDivElement>(null);
 
-    // Convert pinned groups to select options
+    // Convert pinned groups to grouped select options (tokens grouped by color)
+    const groupedOptions: { color: string; tokens: string[] }[] = useMemo(() => {
+        return pinnedGroups.map((group) => ({
+            color: group.color,
+            tokens: group.tokens,
+        }));
+    }, [pinnedGroups]);
+
+    // Flat list of all pinned tokens (for pinnedTokenSet)
     const selectedOptions: PinnedTokenOption[] = useMemo(() => {
         const options: PinnedTokenOption[] = [];
         pinnedGroups.forEach((group, groupIndex) => {
@@ -279,35 +287,45 @@ export const TargetTokenSelector = ({ configId, config, setConfig }: TargetToken
                 )}
             </div>
 
-            {/* Display pinned tokens with their colors */}
+            {/* Display pinned tokens grouped by color */}
             <div className="flex flex-wrap gap-1.5 min-h-[2rem]">
-                {selectedOptions.length === 0 ? (
+                {groupedOptions.length === 0 ? (
                     <span className="text-xs text-muted-foreground italic">
                         No pinned tokens. Click tokens or search above to pin trajectories.
                     </span>
                 ) : (
-                    selectedOptions.map((opt, idx) => (
+                    groupedOptions.map((group, groupIdx) => (
                         <div
-                            key={`${opt.value}-${idx}`}
+                            key={`group-${groupIdx}-${group.color}`}
                             className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-popover border"
                             style={{
-                                borderColor: opt.color || undefined,
-                                borderLeftWidth: opt.color ? 3 : 1,
+                                borderColor: group.color || undefined,
+                                borderLeftWidth: group.color ? 3 : 1,
                             }}
                         >
-                            <span className="text-muted-foreground font-mono">
-                                {renderTokenText(opt.value)}
-                            </span>
-                            <button
-                                onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    handleRemoveToken(opt.value);
-                                }}
-                                className="ml-1 text-muted-foreground hover:text-foreground"
-                            >
-                                <X className="w-3 h-3" />
-                            </button>
+                            {group.tokens.map((token, tokenIdx) => (
+                                <span
+                                    key={`${token}-${tokenIdx}`}
+                                    className="inline-flex items-center gap-0.5"
+                                >
+                                    {tokenIdx > 0 && (
+                                        <span className="text-muted-foreground/50 mx-0.5">|</span>
+                                    )}
+                                    <span className="text-muted-foreground font-mono">
+                                        {renderTokenText(token)}
+                                    </span>
+                                    <button
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            handleRemoveToken(token);
+                                        }}
+                                        className="text-muted-foreground hover:text-foreground"
+                                    >
+                                        <X className="w-3 h-3" />
+                                    </button>
+                                </span>
+                            ))}
                         </div>
                     ))
                 )}
