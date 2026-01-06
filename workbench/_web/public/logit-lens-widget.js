@@ -1302,6 +1302,12 @@ var LogitLensWidgetModule = (() => {
       }
       return data.layers.map(() => 0);
     }
+    function getMetricTrajectoryForToken(token, pos) {
+      if (trajectoryMetric === "rank") {
+        return getRankTrajectoryForToken(token, pos);
+      }
+      return getTrajectoryForToken(token, pos);
+    }
     function getGroupTrajectory(group, pos) {
       if (trajectoryMetric === "rank") {
         const result3 = data.layers.map(() => Infinity);
@@ -1960,7 +1966,8 @@ var LogitLensWidgetModule = (() => {
           });
           item.classList.add("active");
           const chartInnerWidth2 = updateChartDimensions();
-          drawAllTrajectoriesWrapper(tokData.trajectory, "#999", tokData.token, chartInnerWidth2, pos);
+          const hoverTraj2 = getMetricTrajectoryForToken(tokData.token, pos);
+          drawAllTrajectoriesWrapper(hoverTraj2, "#999", tokData.token, chartInnerWidth2, pos);
         });
         item.addEventListener("mouseleave", () => {
           item.classList.remove("active");
@@ -1986,7 +1993,8 @@ var LogitLensWidgetModule = (() => {
       }
       showOverlay(closePopup);
       const chartInnerWidth = updateChartDimensions();
-      drawAllTrajectoriesWrapper(cellData.trajectory, "#999", cellData.token, chartInnerWidth, pos);
+      const hoverTraj = getMetricTrajectoryForToken(cellData.token, pos);
+      drawAllTrajectoriesWrapper(hoverTraj, "#999", cellData.token, chartInnerWidth, pos);
     }
     function togglePinnedTrajectory(token, addToGroup) {
       const existingGroupIdx = findGroupForToken(token);
@@ -2075,7 +2083,7 @@ var LogitLensWidgetModule = (() => {
           if (isInputToken) {
             const bestToken = findHighestProbToken(pos, 2, 0.05);
             if (bestToken && findGroupForToken(bestToken) < 0) {
-              const traj = getTrajectoryForToken(bestToken, pos);
+              const traj = getMetricTrajectoryForToken(bestToken, pos);
               drawAllTrajectoriesWrapper(traj, "#999", bestToken, chartInnerWidth, pos);
             } else {
               drawAllTrajectoriesWrapper(null, null, null, chartInnerWidth, pos);
@@ -2083,7 +2091,8 @@ var LogitLensWidgetModule = (() => {
           } else {
             const li = parseInt(cell.dataset.li || "0", 10);
             const cellData = data.cells[pos][li] || data.cells[pos][0];
-            drawAllTrajectoriesWrapper(cellData.trajectory, "#999", cellData.token, chartInnerWidth, pos);
+            const hoverTraj = getMetricTrajectoryForToken(cellData.token, pos);
+            drawAllTrajectoriesWrapper(hoverTraj, "#999", cellData.token, chartInnerWidth, pos);
           }
         });
         cell.addEventListener("mouseleave", () => {
